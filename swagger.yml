@@ -1,0 +1,431 @@
+swagger: "2.0"
+
+info:
+  version: 1.1.1
+  title: API Proposal for go-swagger-api
+  description: |
+    This is RESTful API specification for quocbang system.
+    The default response of each API endpoints are based on HTTP Status Code Standardization, e.g:
+      - 400 (Bad Request)
+      - 401 (Unauthorized)
+      - 403 (Forbidden)
+      - 408 (Request Timeout)
+      - 500 (Internal Server Error)
+  contact:
+    email: quocbang@kenda.com.tw
+  license:
+    name: "Copyright © 2023 by quocbang, All Rights Reserved"
+
+schemes:
+  - http
+  - https
+
+basePath: /api
+consumes: [application/json]
+produces: [application/json]
+
+securityDefinitions:
+  api_key:
+    type: apiKey
+    in: header
+    name: x-api-auth-key
+
+security:
+  - api_key: []
+
+tags:
+  - name: account
+    description: 帳號管理相關
+  - name: product
+
+definitions:
+  Principal:
+    properties:
+      ID:
+        type: string
+        description: 使用者工號/帳號
+        example: userid
+      roles:
+        $ref: "#/definitions/Roles"
+  LoginRequest:
+    properties:
+      ID:
+        type: string
+        description: 使用者工號/帳號
+      password:
+        type: string
+        description: 使用者密碼
+      loginType:
+        $ref: "#/definitions/LoginType"
+    required:
+      - ID
+      - password
+      - loginType
+  LoginType:
+    type: integer
+    description: >
+      登入類別:
+        * 0 - MES
+        * 1 - Windows
+    x-omitempty: false
+    enum: &LOGIN_TYPE
+      - 0 # MES
+      - 1 # Windows
+  LoginResponse:
+    properties:
+      token:
+        type: string
+        description: 使用者令牌(token)
+      tokenExpiry:
+        type: string
+        format: date-time
+        example: "2017-07-21T17:32:28Z"
+        description: token 過期時間
+      roles:
+        $ref: "#/definitions/Roles"
+      authorizedDepartments:
+        $ref: "#/definitions/Departments"
+  Roles:
+    type: array
+    description: 使用者角色
+    items:
+      $ref: "#/definitions/Role"
+  Role:
+    type: integer
+    x-omitempty: false
+    description: |
+      授權角色
+      定義來源參考: https://gitlab.kenda.com.tw/kenda/mcom/-/blob/${xxx}/utils/roles/roles.proto `Role` type.
+      in which `${xxx}` inside the URL reference is the specified branch name of the corresponding features.
+  Departments:
+    type: array
+    description: 部門清單
+    items:
+      $ref: "#/definitions/Department"
+  Department:
+    type: object
+    description: 部門資訊
+    properties:
+      OID:
+        type: string
+        description: 部門OID
+      ID:
+        type: string
+        description: 部門代號
+        example: M2110
+  AccountData:
+    type: array
+    items:
+      type: object
+      properties:
+        employeeID:
+          type: string
+          example: 000000
+          description: 人員工號
+        roles:
+          $ref: "#/definitions/Roles"
+      required:
+        - employeeID
+        - roles
+  Limitary:
+    type: object
+    properties: 
+      min:
+        type: string
+        format: date-time
+        x-order: 0
+        readOnly: true        
+      max:
+        type: string
+        format: date-time
+        x-order: 1
+        readOnly: true
+  Error:
+    type: object
+    properties:
+      code:
+        type: integer
+        x-omitempty: false
+        description: |
+          自定義錯誤碼
+          定義來源參考:
+          https://gitlab.kenda.com.tw/kenda/mcom/-/blob/${xxx}/errors/code.proto `Code` enum.
+          in which `${xxx}` inside the URL reference is the specified branch name of the corresponding features.
+      details:
+        type: string
+        description: 補充訊息
+
+
+parameters:
+  DepartmentOID:
+    in: path
+    name: departmentOID
+    type: string
+    required: true
+    description: 部門OID
+    
+responses:
+  Default:
+    description: Unexpected error
+    schema:
+      $ref: "#/definitions/Error"
+paths:
+  /server/status:
+    get:
+      summary: 檢查server狀態用
+      operationId: CheckServerStatus
+      security: []
+      responses:
+        200:
+          description: OK
+
+  /user/login:
+    post:
+      summary: 使用者登入
+      description: |
+        支援登入類別為:
+        - MES 帳號登入
+        - Windows 帳號登入
+      tags: [account]
+      operationId: Login
+      security: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/LoginRequest"
+      responses:
+        200:
+          description: OK
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: "#/definitions/LoginResponse"
+        400:
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/Error"
+        500:
+          description: Internal Error
+          schema:
+            $ref: "#/definitions/Error"
+  /user/logout:
+    post:
+      summary: 使用者登出
+      tags: [account]
+      operationId: Logout
+      security: []
+      responses:
+        200:
+          description: OK
+  /user/change-password:
+    put:
+      summary: 修改密碼(限MES帳號)
+      tags: [account]
+      operationId: ChangePassword
+      security:
+        - api_key: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
+            properties:
+              currentPassword:
+                type: string
+                description: 原密碼
+                minLength: 6
+                maxLength: 10
+              newPassword:
+                type: string
+                description: 新密碼
+                minLength: 6
+                maxLength: 10
+            required:
+              - currentPassword
+              - newPassword
+      responses:
+        200:
+          description: OK
+        default:
+          $ref: "#/responses/Default"
+  /account/role-list:
+    get:
+      summary: 取得角色清單
+      tags: [account]
+      operationId: GetRoleList
+      security:
+        - api_key: []
+      responses:
+        200:
+          description: OK
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ID:
+                      $ref: "#/definitions/Role"
+                    name:
+                      type: string
+                      example: SCHEDULER
+                      description: 角色名稱
+        default:
+          $ref: "#/responses/Default"
+  /account/unauthorized/department-oid/{departmentOID}:
+    get:
+      summary: 查詢可新增角色授權帳號清單
+      tags: [account]
+      operationId: ListUnauthorizedAccount
+      security:
+        - api_key: []
+      parameters:
+        - $ref: "#/parameters/DepartmentOID"
+      responses:
+        200:
+          description: OK
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    employeeID:
+                      type: string
+                      description: 人員工號
+        default:
+          $ref: "#/responses/Default"
+  /account/authorized/department-oid/{departmentOID}:
+    get:
+      summary: 查詢帳號權限清單
+      tags: [account]
+      operationId: ListAuthorizedAccount
+      security:
+        - api_key: []
+      parameters:
+        - $ref: "#/parameters/DepartmentOID"
+      responses:
+        200:
+          description: OK
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: "#/definitions/AccountData"
+        default:
+          $ref: "#/responses/Default"
+  /account/authorization:
+    post:
+      summary: 新增帳號權限
+      description: |
+        - 不允許授權系統管理員(ADMINISTRATOR)與主管(LEADER)角色.
+        - 若想要授權系統管理員或主管角色時請再提登入異動單.
+      tags: [account]
+      operationId: CreateAccountAuthorization
+      security:
+        - api_key: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            type: object
+            properties:
+              employeeID:
+                type: string
+                description: 人員工號
+              roles:
+                $ref: "#/definitions/Roles"
+            required:
+              - employeeID
+              - roles
+      responses:
+        200:
+          description: OK
+        default:
+          $ref: "#/responses/Default"
+  /account/authorization/{employeeID}:
+    put:
+      summary: 修改帳號角色
+      description: |
+        - 不允許授權系統管理員(ADMINISTRATOR)與主管(LEADER)角色.
+        - 若想要授權系統管理員或主管角色時請再提登入異動單.
+        - 允許修改角色清單或者重置密碼需求
+      tags: [account]
+      operationId: UpdateAccountAuthorization
+      security:
+        - api_key: []
+      parameters:
+        - in: path
+          name: employeeID
+          type: string
+          required: true
+          description: 人員工號
+        - in: body
+          name: body
+          schema:
+            type: object
+            properties:
+              roles:
+                $ref: "#/definitions/Roles"
+              resetPassword:
+                type: boolean
+                description: 重置密碼
+            required:
+              - roles
+              - resetPassword
+          required: true
+      responses:
+        200:
+          description: OK
+        default:
+          $ref: "#/responses/Default"
+    delete:
+      summary: 刪除帳號
+      tags: [account]
+      operationId: DeleteAccount
+      security:
+        - api_key: []
+      parameters:
+        - in: path
+          name: employeeID
+          type: string
+          required: true
+          description: 人員工號
+      responses:
+        200:
+          description: OK
+        default:
+          $ref: "#/responses/Default"
+
+  /limitary/{productType}:
+    get:
+      summary: get limitary hour from database
+      tags: [production]
+      operationId: Getlimitary
+      security: []
+        # - api_key: []
+      parameters:
+        - in: path
+          name: productType
+          type: string
+          required: true
+      responses:
+        200:
+          description: OK
+          schema:
+            type: object
+            properties:
+              data:
+                $ref: "#/definitions/Limitary"
+              
+        default:
+          $ref: "#/responses/Default"
